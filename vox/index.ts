@@ -15,11 +15,11 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { config } from "dotenv";
 import OpenAI from "openai";
+import { appendHistory, readRecentHistory } from "../log/logger";
 
 config({ path: path.join(import.meta.dir, "../deepseek-telegram-agent/.env") });
 
 const AGENT_DIR = path.resolve(import.meta.dir, "../deepseek-telegram-agent");
-const HISTORY_FILE = path.join(import.meta.dir, "history.jsonl");
 const LOG_FILE = path.join(import.meta.dir, "vox.log");
 const LOG_PREFIX = "[vox]";
 
@@ -31,34 +31,6 @@ async function log(msg: string) {
   const line = `${ts()} ${msg}\n`;
   process.stdout.write(line);
   await fs.appendFile(LOG_FILE, line);
-}
-
-// ── types ────────────────────────────────────────────────────────────────────
-
-interface HistoryEntry {
-  ts: number; // unix ms
-  role: "user" | "agent";
-  text: string;
-}
-
-// ── history helpers ──────────────────────────────────────────────────────────
-
-async function appendHistory(entry: HistoryEntry) {
-  await fs.appendFile(HISTORY_FILE, JSON.stringify(entry) + "\n");
-}
-
-async function readRecentHistory(windowMs = 24 * 60 * 60 * 1000): Promise<HistoryEntry[]> {
-  try {
-    const raw = await fs.readFile(HISTORY_FILE, "utf-8");
-    const cutoff = Date.now() - windowMs;
-    return raw
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => JSON.parse(l) as HistoryEntry)
-      .filter((e) => e.ts >= cutoff);
-  } catch {
-    return [];
-  }
 }
 
 // ── sub-agent process ────────────────────────────────────────────────────────
@@ -143,7 +115,7 @@ async function runOptimisation() {
   ]);
 
   const historyText = history
-    .map((e) => `[${new Date(e.ts).toISOString()}] ${e.role}: ${e.text}`)
+    .map((e) => `[${new Date(e.ts).toISOString()}] [${e.kind}] ${e.text}`)
     .join("\n");
 
   // Step 1: analyse and pick top-1 improvement
@@ -295,8 +267,8 @@ async function runTUI() {
       await log(`${LOG_PREFIX} [user] /optimise`);
       await runOptimisation();
     } else {
-      // Log as user prompt for history analysis
-      await appendHistory({ ts: Date.now(), role: "user", text: input });
+      // Log as vox user prompt for history analysis
+      await appendHistory({ ts: Date.now(), kind: "vox_in", source: "vox", text: input });
       await log(`${LOG_PREFIX} [prompt] ${input}`);
     }
 

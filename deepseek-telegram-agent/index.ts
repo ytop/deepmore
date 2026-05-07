@@ -1,12 +1,12 @@
 import { Bot } from "grammy";
 import { config } from "dotenv";
 import { Agent } from "./agent";
+import { appendHistory } from "../log/logger";
 
 config(); // Load environment variables from .env
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
-const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1"; // ensure /v1 for some setups, or use deepseek's default
 const ALLOWED_USER_ID = process.env.ALLOWED_USER_ID;
 
 if (!BOT_TOKEN) {
@@ -26,6 +26,9 @@ if (!ALLOWED_USER_ID) {
 
 const bot = new Bot(BOT_TOKEN);
 const agent = new Agent(DEEPSEEK_API_KEY, process.env.DEEPSEEK_BASE_URL);
+
+// Wire structured logger
+agent.setLogFn((entry) => appendHistory({ ...entry, ts: Date.now() }));
 
 const allowedUserId = parseInt(ALLOWED_USER_ID, 10);
 
@@ -60,11 +63,13 @@ bot.command(["new", "reset"], async (ctx) => {
 bot.on("message:text", async (ctx) => {
   const userMessage = ctx.message.text;
 
-  // Show a typing indicator
   await ctx.replyWithChatAction("typing");
 
   try {
-    const response = await agent.sendMessage(userMessage);
+    const response = await agent.sendMessage(userMessage, "telegram");
+
+    // Log outgoing reply
+    await appendHistory({ ts: Date.now(), kind: "telegram_out", source: "telegram", text: response });
 
     // Telegram messages have a 4096 char limit
     const chunkSize = 4000;
