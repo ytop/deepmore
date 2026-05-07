@@ -41,7 +41,7 @@ Execute tasks responsibly. You operate in YOLO mode, meaning tools run immediate
   private async runLoop(): Promise<string> {
     while (true) {
       const response = await this.openai.chat.completions.create({
-        model: "deepseek-chat", // standard model name, could be made configurable
+        model: process.env.DEEPSEEK_MODEL_BASE || "deepseek-chat",
         messages: this.history,
         tools: tools as any,
         tool_choice: "auto",
