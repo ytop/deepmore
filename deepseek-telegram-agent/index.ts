@@ -20,7 +20,7 @@ if (!DEEPSEEK_API_KEY) {
 }
 
 if (!ALLOWED_USER_ID) {
-  console.error("Error: ALLOWED_USER_ID is not set in .env. This is required for security.");
+  console.error("Error: ALLOWED_USER_ID is not set in .env. Use 0 to allow all users.");
   process.exit(1);
 }
 
@@ -31,7 +31,7 @@ const allowedUserId = parseInt(ALLOWED_USER_ID, 10);
 
 // Middleware for authorization
 bot.use(async (ctx, next) => {
-  if (ctx.from?.id !== allowedUserId) {
+  if (allowedUserId !== 0 && ctx.from?.id !== allowedUserId) {
     console.log(`Unauthorized access attempt from User ID: ${ctx.from?.id}`);
     await ctx.reply("⛔️ Unauthorized access. You are not allowed to use this bot.");
     return;

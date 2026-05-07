@@ -15,7 +15,7 @@ export class Agent {
     this.history.push({
       role: "system",
       content: `You are an AI assistant running locally on a user's machine. You have access to tools to read/write files and execute shell commands.
-Execute tasks responsibly. You operate in YOLO mode, meaning tools run immediately without confirmation, so be careful with shell commands. Keep responses concise.`,
+Execute tasks responsibly. You operate in YOLO mode, meaning tools run immediately without confirmation, so be careful with shell commands. Keep responses concise.${process.env.WORKSPACE ? `\nYour primary workspace is: ${process.env.WORKSPACE}` : ""}`,
     });
   }
 
