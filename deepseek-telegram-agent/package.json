@@ -1,0 +1,17 @@
+{
+  "name": "deepseek-telegram-agent",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "grammy": "^1.42.0",
+    "openai": "^6.37.0"
+  }
+}
