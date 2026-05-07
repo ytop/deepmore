@@ -20,7 +20,18 @@ config({ path: path.join(import.meta.dir, "../deepseek-telegram-agent/.env") });
 
 const AGENT_DIR = path.resolve(import.meta.dir, "../deepseek-telegram-agent");
 const HISTORY_FILE = path.join(import.meta.dir, "history.jsonl");
+const LOG_FILE = path.join(import.meta.dir, "vox.log");
 const LOG_PREFIX = "[vox]";
+
+function ts() {
+  return new Date().toISOString();
+}
+
+async function log(msg: string) {
+  const line = `${ts()} ${msg}\n`;
+  process.stdout.write(line);
+  await fs.appendFile(LOG_FILE, line);
+}
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -55,7 +66,7 @@ async function readRecentHistory(windowMs = 24 * 60 * 60 * 1000): Promise<Histor
 let agentProc: Subprocess | null = null;
 
 function startAgent() {
-  console.log(`${LOG_PREFIX} Starting deepseek-telegram-agent…`);
+  log(`${LOG_PREFIX} Starting deepseek-telegram-agent…`);
   agentProc = spawn(["bun", "run", "index.ts"], {
     cwd: AGENT_DIR,
     stdout: "inherit",
@@ -63,7 +74,7 @@ function startAgent() {
     stdin: "inherit",
   });
   agentProc.exited.then((code) => {
-    console.log(`${LOG_PREFIX} Agent exited (code ${code})`);
+    log(`${LOG_PREFIX} Agent exited (code ${code})`);
     agentProc = null;
   });
 }
@@ -107,15 +118,15 @@ async function currentCommit(): Promise<string> {
 async function runOptimisation() {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
-    console.error(`${LOG_PREFIX} DEEPSEEK_API_KEY not set — skipping optimisation`);
+    await log(`${LOG_PREFIX} DEEPSEEK_API_KEY not set — skipping optimisation`);
     return;
   }
 
-  console.log(`${LOG_PREFIX} [04:00] Running daily optimisation…`);
+  await log(`${LOG_PREFIX} [cron:04:00] Running daily optimisation…`);
 
   const history = await readRecentHistory();
   if (history.length === 0) {
-    console.log(`${LOG_PREFIX} No history in last 24h — skipping`);
+    await log(`${LOG_PREFIX} [cron] No history in last 24h — skipping`);
     return;
   }
 
@@ -164,7 +175,7 @@ If there is no critical improvement, set critical=false and omit new_content.`,
   // Extract JSON from the response (may be wrapped in markdown fences)
   const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || raw.match(/(\{[\s\S]*\})/);
   if (!jsonMatch) {
-    console.log(`${LOG_PREFIX} Could not parse optimisation response — skipping`);
+    await log(`${LOG_PREFIX} [cron] Could not parse optimisation response — skipping`);
     return;
   }
 
@@ -178,17 +189,17 @@ If there is no critical improvement, set critical=false and omit new_content.`,
   try {
     suggestion = JSON.parse(jsonMatch[1]);
   } catch {
-    console.log(`${LOG_PREFIX} JSON parse error — skipping`);
+    await log(`${LOG_PREFIX} [cron] JSON parse error — skipping`);
     return;
   }
 
   if (!suggestion.critical || !suggestion.new_content || !suggestion.file) {
-    console.log(`${LOG_PREFIX} No critical improvement found: ${suggestion.title || "n/a"}`);
+    await log(`${LOG_PREFIX} [cron] No critical improvement found: ${suggestion.title || "n/a"}`);
     return;
   }
 
-  console.log(`${LOG_PREFIX} Applying: ${suggestion.title}`);
-  console.log(`${LOG_PREFIX} ${suggestion.description}`);
+  await log(`${LOG_PREFIX} [cron] Applying: ${suggestion.title}`);
+  await log(`${LOG_PREFIX} [cron] ${suggestion.description}`);
 
   const targetFile = path.join(AGENT_DIR, suggestion.file);
   const prevCommit = await currentCommit();
@@ -206,7 +217,7 @@ If there is no critical improvement, set critical=false and omit new_content.`,
 
   if (checkCode !== 0) {
     const errOut = await new Response(check.stderr).text();
-    console.error(`${LOG_PREFIX} Build failed — rolling back\n${errOut}`);
+    await log(`${LOG_PREFIX} [cron] Build failed — rolling back\n${errOut}`);
     await git("reset", "--hard", prevCommit);
     return;
   }
@@ -216,9 +227,9 @@ If there is no critical improvement, set critical=false and omit new_content.`,
   await git("commit", "-m", `vox: ${suggestion.title}`);
   const push = await git("push");
   if (!push.ok) {
-    console.error(`${LOG_PREFIX} Push failed: ${push.out}`);
+    await log(`${LOG_PREFIX} [cron] Push failed: ${push.out}`);
   } else {
-    console.log(`${LOG_PREFIX} Pushed optimisation: ${suggestion.title}`);
+    await log(`${LOG_PREFIX} [cron] Pushed optimisation: ${suggestion.title}`);
   }
 
   // Restart agent with new code
@@ -237,12 +248,10 @@ function msUntil4am(): number {
 
 function schedule4am() {
   const delay = msUntil4am();
-  console.log(
-    `${LOG_PREFIX} Next optimisation in ${Math.round(delay / 60000)}m (04:00 local)`
-  );
+  log(`${LOG_PREFIX} Next optimisation in ${Math.round(delay / 60000)}m (04:00 local)`);
   setTimeout(async () => {
     await runOptimisation();
-    schedule4am(); // reschedule for next day
+    schedule4am();
   }, delay);
 }
 
@@ -258,9 +267,9 @@ async function runTUI() {
 
   console.log("╔══════════════════════════════╗");
   console.log("║  vox — deepseek agent shell  ║");
-  console.log("║  :quit  exit                 ║");
-  console.log("║  :restart  restart agent     ║");
-  console.log("║  :optimise  run now          ║");
+  console.log("║  /quit  exit                 ║");
+  console.log("║  /restart  restart agent     ║");
+  console.log("║  /optimise  run now          ║");
   console.log("╚══════════════════════════════╝");
 
   startAgent();
@@ -275,17 +284,20 @@ async function runTUI() {
       return;
     }
 
-    if (input === ":quit" || input === ":exit") {
+    if (input === "/quit" || input === "/exit") {
+      await log(`${LOG_PREFIX} [user] /quit`);
       await stopAgent();
       process.exit(0);
-    } else if (input === ":restart") {
+    } else if (input === "/restart") {
+      await log(`${LOG_PREFIX} [user] /restart`);
       await restartAgent();
-    } else if (input === ":optimise") {
+    } else if (input === "/optimise") {
+      await log(`${LOG_PREFIX} [user] /optimise`);
       await runOptimisation();
     } else {
       // Log as user prompt for history analysis
       await appendHistory({ ts: Date.now(), role: "user", text: input });
-      console.log(`${LOG_PREFIX} (prompt logged — send via Telegram to the agent)`);
+      await log(`${LOG_PREFIX} [prompt] ${input}`);
     }
 
     rl.prompt();

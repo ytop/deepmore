@@ -21,9 +21,9 @@ vox               # from anywhere
 
 | Command | Action |
 |---------|--------|
-| `:quit` / `:exit` | Stop agent and exit |
-| `:restart` | Restart the sub-agent |
-| `:optimise` | Trigger optimisation cycle immediately |
+| `/quit` / `/exit` | Stop agent and exit |
+| `/restart` | Restart the sub-agent |
+| `/optimise` | Trigger optimisation cycle immediately |
 | any other text | Logged to history (send actual prompts via Telegram) |
 
 ## Self-optimisation
