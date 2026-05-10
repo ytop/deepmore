@@ -57,6 +57,7 @@ Execute tasks responsibly. You operate in YOLO mode, meaning tools run immediate
       attempt++;
 
       if (attempt > 1) {
+        // Only log retry, don't spam user
         await this.emit({ kind: "retry", source, text: `Loop iteration ${attempt}`, meta: { attempt, model } });
       }
 
