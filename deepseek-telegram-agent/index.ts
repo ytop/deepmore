@@ -2,6 +2,7 @@ import { Bot } from "grammy";
 import { config } from "dotenv";
 import { Agent } from "./agent";
 import { appendHistory } from "../log/logger";
+import { MessageBatcher } from "./batcher";
 
 config(); // Load environment variables from .env
 
@@ -25,6 +26,7 @@ if (!ALLOWED_USER_ID) {
 }
 
 const bot = new Bot(BOT_TOKEN);
+const batcher = new MessageBatcher(bot);
 const agent = new Agent(DEEPSEEK_API_KEY, process.env.DEEPSEEK_BASE_URL);
 
 // Wire structured logger
@@ -36,7 +38,9 @@ const allowedUserId = parseInt(ALLOWED_USER_ID, 10);
 bot.use(async (ctx, next) => {
   if (allowedUserId !== 0 && ctx.from?.id !== allowedUserId) {
     console.log(`Unauthorized access attempt from User ID: ${ctx.from?.id}`);
-    await ctx.reply("⛔️ Unauthorized access. You are not allowed to use this bot.");
+    if (ctx.chat?.id) {
+      batcher.enqueue(ctx.chat.id, "⛔️ Unauthorized access. You are not allowed to use this bot.");
+    }
     return;
   }
   await next();
@@ -50,19 +54,19 @@ agent.setOnMessageCallback(async (msg: string, chatId?: number) => {
       console.warn("Attempted to send notification to chat ID 0. Skipping.");
       return;
     }
-    await bot.api.sendMessage(targetChatId, msg);
+    batcher.enqueue(targetChatId, msg);
   } catch (err) {
     console.error("Failed to send notification to Telegram:", err);
   }
 });
 
 bot.command(["start", "help"], async (ctx) => {
-  await ctx.reply("👋 Hello! I am your local DeepSeek agent. I have YOLO access to your local machine.\n\nSend me a message to start working.\nUse /new or /reset to clear the session memory.");
+  batcher.enqueue(ctx.chat.id, "👋 Hello! I am your local DeepSeek agent. I have YOLO access to your local machine.\n\nSend me a message to start working.\nUse /new or /reset to clear the session memory.");
 });
 
 bot.command(["new", "reset"], async (ctx) => {
   agent.resetMemory();
-  await ctx.reply("🧹 Session memory has been reset.");
+  batcher.enqueue(ctx.chat.id, "🧹 Session memory has been reset.");
 });
 
 bot.on("message:text", async (ctx) => {
@@ -77,14 +81,10 @@ bot.on("message:text", async (ctx) => {
     // Log outgoing reply
     await appendHistory({ ts: Date.now(), kind: "telegram_out", source: "telegram", text: response });
 
-    // Telegram messages have a 4096 char limit
-    const chunkSize = 4000;
-    for (let i = 0; i < response.length; i += chunkSize) {
-      await ctx.reply(response.substring(i, i + chunkSize));
-    }
+    batcher.enqueue(chatId, response);
   } catch (error: any) {
     console.error("Agent error:", error);
-    await ctx.reply(`❌ Error from agent: ${error.message}`);
+    batcher.enqueue(chatId, `❌ Error from agent: ${error.message}`);
   }
 });
 
@@ -97,5 +97,11 @@ bot.start({
 });
 
 // Graceful shutdown
-process.once("SIGINT", () => bot.stop());
-process.once("SIGTERM", () => bot.stop());
+process.once("SIGINT", async () => {
+  await batcher.flushAll();
+  bot.stop();
+});
+process.once("SIGTERM", async () => {
+  await batcher.flushAll();
+  bot.stop();
+});
