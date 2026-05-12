@@ -7,7 +7,7 @@ type LogFn = (entry: Omit<HistoryEntry, "ts">) => void | Promise<void>;
 export class Agent {
   private openai: OpenAI;
   private history: OpenAI.Chat.ChatCompletionMessageParam[] = [];
-  private onMessageCallback?: (msg: string) => void | Promise<void>;
+  private onMessageCallback?: (msg: string, chatId?: number) => void | Promise<void>;
   private logFn?: LogFn;
 
   constructor(apiKey: string, baseURL?: string) {
@@ -23,7 +23,7 @@ Execute tasks responsibly. You operate in YOLO mode, meaning tools run immediate
     });
   }
 
-  public setOnMessageCallback(cb: (msg: string) => void | Promise<void>) {
+  public setOnMessageCallback(cb: (msg: string, chatId?: number) => void | Promise<void>) {
     this.onMessageCallback = cb;
   }
 
@@ -32,24 +32,24 @@ Execute tasks responsibly. You operate in YOLO mode, meaning tools run immediate
   }
 
   public resetMemory() {
-    this.history = [this.history[0]]; // keep only system prompt
+    this.history = [this.history[0] as OpenAI.Chat.ChatCompletionMessageParam]; // keep only system prompt
   }
 
-  public async sendMessage(message: string, source: HistoryEntry["source"] = "telegram"): Promise<string> {
+  public async sendMessage(message: string, source: HistoryEntry["source"] = "telegram", chatId?: number): Promise<string> {
     this.history.push({ role: "user", content: message });
     await this.emit({ kind: source === "telegram" ? "telegram_in" : "vox_in", source, text: message });
-    return this.runLoop(source);
+    return this.runLoop(source, chatId);
   }
 
   private async emit(entry: Omit<HistoryEntry, "ts">) {
     if (this.logFn) await this.logFn(entry);
   }
 
-  private async notifyUser(msg: string) {
-    if (this.onMessageCallback) await this.onMessageCallback(msg);
+  private async notifyUser(msg: string, chatId?: number) {
+    if (this.onMessageCallback) await this.onMessageCallback(msg, chatId);
   }
 
-  private async runLoop(source: HistoryEntry["source"]): Promise<string> {
+  private async runLoop(source: HistoryEntry["source"], chatId?: number): Promise<string> {
     const model = process.env.DEEPSEEK_MODEL_BASE || "deepseek-chat";
     let attempt = 0;
 
@@ -68,16 +68,16 @@ Execute tasks responsibly. You operate in YOLO mode, meaning tools run immediate
         tool_choice: "auto",
       });
 
-      const message = response.choices[0].message;
+      const message = response.choices[0]?.message!
       this.history.push(message as any);
 
       if (message.tool_calls && message.tool_calls.length > 0) {
         for (const toolCall of message.tool_calls) {
-          const functionName = toolCall.function.name as keyof typeof toolRunner;
-          const args = JSON.parse(toolCall.function.arguments);
+          const functionName = (toolCall as any).function.name as keyof typeof toolRunner;
+          const args = JSON.parse((toolCall as any).function.arguments);
 
           await this.emit({ kind: "tool_call", source, text: functionName, meta: { args } });
-          await this.notifyUser(`🛠 Running tool: ${functionName}\nArgs: ${JSON.stringify(args, null, 2)}`);
+          await this.notifyUser(`🛠 Running tool: ${functionName}\nArgs: ${JSON.stringify(args, null, 2)}`, chatId);
 
           let result: string;
           if (toolRunner[functionName]) {
@@ -89,7 +89,7 @@ Execute tasks responsibly. You operate in YOLO mode, meaning tools run immediate
           this.history.push({ role: "tool", tool_call_id: toolCall.id, content: result });
 
           await this.emit({ kind: "tool_result", source, text: result, meta: { tool: functionName } });
-          await this.notifyUser(`✅ Tool finished: ${functionName}\n${result.substring(0, 100)}...`);
+          await this.notifyUser(`✅ Tool finished: ${functionName}\n${result.substring(0, 100)}...`, chatId);
         }
         // Loop continues — this is the think/re-do cycle
       } else {

@@ -43,9 +43,14 @@ bot.use(async (ctx, next) => {
 });
 
 // Setup Agent notifications to send to Telegram
-agent.setOnMessageCallback(async (msg: string) => {
+agent.setOnMessageCallback(async (msg: string, chatId?: number) => {
   try {
-    await bot.api.sendMessage(allowedUserId, msg);
+    const targetChatId = chatId ?? allowedUserId;
+    if (targetChatId === 0) {
+      console.warn("Attempted to send notification to chat ID 0. Skipping.");
+      return;
+    }
+    await bot.api.sendMessage(targetChatId, msg);
   } catch (err) {
     console.error("Failed to send notification to Telegram:", err);
   }
@@ -62,11 +67,12 @@ bot.command(["new", "reset"], async (ctx) => {
 
 bot.on("message:text", async (ctx) => {
   const userMessage = ctx.message.text;
+  const chatId = ctx.chat.id;
 
   await ctx.replyWithChatAction("typing");
 
   try {
-    const response = await agent.sendMessage(userMessage, "telegram");
+    const response = await agent.sendMessage(userMessage, "telegram", chatId);
 
     // Log outgoing reply
     await appendHistory({ ts: Date.now(), kind: "telegram_out", source: "telegram", text: response });
