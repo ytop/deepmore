@@ -102,6 +102,27 @@ export const tools = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "inspect_ui_component",
+      description: "Inspect the rendered CSS properties of a UI component by its Vue file path or CSS selector. Returns the computed styles that would affect event handling and visibility, such as overflow, position, z-index, display, etc. Use this to quickly diagnose UI interaction bugs without manually tracing through multiple files.",
+      parameters: {
+        type: "object",
+        properties: {
+          component_file: {
+            type: "string",
+            description: "Path to the Vue component file to inspect (e.g., 'ui/src/layout/components/Navbar.vue')",
+          },
+          css_selector: {
+            type: "string",
+            description: "CSS selector for the specific element within the component to inspect (e.g., '.navbar', '.avatar-container'). If not provided, inspects all class selectors in the component.",
+          },
+        },
+        required: ["component_file"],
+      },
+    },
+  },
 ];
 
 function validateCommand(command: string): string | null {
@@ -219,9 +240,111 @@ export async function writeFile(filepath: string, content: string): Promise<stri
   }
 }
 
+export async function inspectUIComponent(params: {
+  component_file: string;
+  css_selector?: string;
+}): Promise<string> {
+  const { component_file, css_selector } = params;
+  console.log(`[Tool: inspect_ui_component] file=${component_file}, selector=${css_selector || "all class rules"}`);
+  
+  try {
+    // Read the component file
+    const fullPath = path.resolve(component_file);
+    const content = await fs.readFile(fullPath, "utf-8");
+    
+    // Extract <style> section (both scoped and unscoped)
+    const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/g;
+    let styles: string[] = [];
+    let match;
+    while ((match = styleRegex.exec(content)) !== null) {
+      styles.push(match[1]);
+    }
+    
+    if (styles.length === 0) {
+      return `No <style> section found in ${component_file}`;
+    }
+    
+    let result = `## UI Component: ${component_file}\n\n`;
+    
+    if (css_selector) {
+      // Extract CSS rules for the specific selector
+      const allCss = styles.join("\n");
+      
+      // Parse the CSS to find rules matching the selector
+      const cssLines = allCss.split("\n");
+      let inBlock = false;
+      let currentSelector = "";
+      let foundRules: string[] = [];
+      
+      for (const line of cssLines) {
+        const trimmed = line.trim();
+        
+        if (trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) {
+          continue; // skip comments
+        }
+        
+        if (trimmed.includes("{")) {
+          currentSelector = trimmed.split("{")[0].trim();
+          inBlock = true;
+          continue;
+        }
+        
+        if (trimmed.includes("}")) {
+          inBlock = false;
+          currentSelector = "";
+          continue;
+        }
+        
+        if (inBlock && currentSelector.includes(css_selector)) {
+          foundRules.push(`  ${trimmed}`);
+        }
+      }
+      
+      if (foundRules.length > 0) {
+        result += `### CSS properties for selector "${css_selector}":\n\n`;
+        result += foundRules.join("\n");
+        result += "\n\n";
+        
+        // Extract key interaction-affecting properties
+        const interactionProps = foundRules.filter(rule => {
+          const lower = rule.toLowerCase();
+          return lower.includes("overflow") || 
+                 lower.includes("position") || 
+                 lower.includes("z-index") || 
+                 lower.includes("display") || 
+                 lower.includes("visibility") || 
+                 lower.includes("pointer-events") ||
+                 lower.includes("opacity");
+        });
+        
+        if (interactionProps.length > 0) {
+          result += `### ⚠️ Potential interaction-affecting properties:\n\n`;
+          result += interactionProps.join("\n");
+          result += "\n\n";
+        }
+      } else {
+        result += `No CSS rules found for selector "${css_selector}" in this component.\n\n`;
+      }
+    }
+    
+    result += `### All CSS sections (${styles.length} found):\n\n`;
+    styles.forEach((styleContent, index) => {
+      const lines = styleContent.split("\n").filter(l => l.trim());
+      result += `<style section ${index + 1}>\n`;
+      lines.forEach(line => result += `  ${line}\n`);
+      result += `</style section ${index + 1}>\n\n`;
+    });
+    
+    return result;
+  } catch (error: any) {
+    return `Error inspecting UI component: ${error.message}`;
+  }
+}
+
 export const toolRunner = {
   run_shell_command: (args: any) => runShellCommand(args.command),
   search_files: (args: any) => searchFiles(args),
   read_file: (args: any) => readFile(args.filepath),
   write_file: (args: any) => writeFile(args.filepath, args.content),
+  inspect_ui_component: (args: any) => inspectUIComponent(args),
 };
