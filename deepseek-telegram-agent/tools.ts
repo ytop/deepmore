@@ -159,6 +159,15 @@ export async function runShellCommand(command: string): Promise<string> {
   }
 }
 
+/**
+ * Escape a string for use as a literal grep pattern in a shell command.
+ */
+function escapeGrepPattern(pattern: string): string {
+  // Escape special characters that grep interprets:
+  // . ^ $ * + ? [ ] ( ) { } | \
+  return pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '\\*').replace(/\?/g, '\\?');
+}
+
 export async function searchFiles(params: {
   name_pattern: string;
   content_pattern?: string;
@@ -172,12 +181,13 @@ export async function searchFiles(params: {
   console.log(`[Tool: search_files] pattern=${name_pattern}, content=${content_pattern || "any"}, dir=${searchDir}`);
   
   try {
-    // Use find for efficient file discovery
     let command: string;
     
     if (content_pattern) {
+      // Escape the content pattern for safe use in grep
+      const escapedContent = escapeGrepPattern(content_pattern);
       // Search by name AND content
-      command = `find ${searchDir} -type f -name "${name_pattern}" -exec grep -l "${content_pattern}" {} \\; 2>/dev/null | head -${limit}`;
+      command = `find ${searchDir} -type f -name "${name_pattern}" -exec grep -l "${escapedContent}" {} \\; 2>/dev/null | head -${limit}`;
     } else {
       // Search by name only
       command = `find ${searchDir} -type f -name "${name_pattern}" 2>/dev/null | head -${limit}`;
