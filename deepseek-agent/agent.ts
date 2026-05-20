@@ -36,7 +36,7 @@ type LogFn = (entry: Omit<HistoryEntry, "ts">) => void | Promise<void>;
 export class Agent {
   private openai: OpenAI;
   private history: OpenAI.Chat.ChatCompletionMessageParam[] = [];
-  private onMessageCallback?: (msg: string, chatId?: number) => void | Promise<void>;
+  private onMessageCallback?: (msg: string, chatId?: number | string) => void | Promise<void>;
   private logFn?: LogFn;
   private readonly maxIterations: number;
 
@@ -54,7 +54,7 @@ Execute tasks responsibly. You operate in YOLO mode, meaning tools run immediate
     });
   }
 
-  public setOnMessageCallback(cb: (msg: string, chatId?: number) => void | Promise<void>) {
+  public setOnMessageCallback(cb: (msg: string, chatId?: number | string) => void | Promise<void>) {
     this.onMessageCallback = cb;
   }
 
@@ -66,9 +66,9 @@ Execute tasks responsibly. You operate in YOLO mode, meaning tools run immediate
     this.history = [this.history[0] as OpenAI.Chat.ChatCompletionMessageParam]; // keep only system prompt
   }
 
-  public async sendMessage(message: string, source: HistoryEntry["source"] = "telegram", chatId?: number): Promise<string> {
+  public async sendMessage(message: string, source: HistoryEntry["source"] = "telegram", chatId?: number | string): Promise<string> {
     this.history.push({ role: "user", content: message });
-    await this.emit({ kind: source === "telegram" ? "telegram_in" : "vox_in", source, text: message });
+    await this.emit({ kind: source === "telegram" ? "telegram_in" : source === "lark" ? "lark_in" : "vox_in", source, text: message });
     return this.runLoop(source, chatId);
   }
 
@@ -76,11 +76,11 @@ Execute tasks responsibly. You operate in YOLO mode, meaning tools run immediate
     if (this.logFn) await this.logFn(entry);
   }
 
-  private async notifyUser(msg: string, chatId?: number) {
+  private async notifyUser(msg: string, chatId?: number | string) {
     if (this.onMessageCallback) await this.onMessageCallback(msg, chatId);
   }
 
-  private async runLoop(source: HistoryEntry["source"], chatId?: number): Promise<string> {
+  private async runLoop(source: HistoryEntry["source"], chatId?: number | string): Promise<string> {
     const model = process.env.DEEPSEEK_MODEL_BASE || "deepseek-chat";
     let attempt = 0;
 
