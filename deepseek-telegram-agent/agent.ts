@@ -2,6 +2,35 @@ import OpenAI from "openai";
 import { tools, toolRunner } from "./tools";
 import type { HistoryEntry } from "../log/logger";
 
+const DEFAULT_MAX_ITERATIONS = 25;
+const MAX_ITERATIONS_LOWER_BOUND = 1;
+const MAX_ITERATIONS_UPPER_BOUND = 1000;
+
+export function resolveMaxIterations(): number {
+  const raw = process.env.AGENT_MAX_ITERATIONS;
+  if (raw === undefined) return DEFAULT_MAX_ITERATIONS;
+  const trimmed = raw.trim();
+  if (trimmed === "") return DEFAULT_MAX_ITERATIONS;
+  if (!/^\d+$/.test(trimmed)) {
+    console.warn(
+      `[agent] Ignoring invalid AGENT_MAX_ITERATIONS=${JSON.stringify(raw)}; using default ${DEFAULT_MAX_ITERATIONS}.`
+    );
+    return DEFAULT_MAX_ITERATIONS;
+  }
+  const n = Number.parseInt(trimmed, 10);
+  if (n < MAX_ITERATIONS_LOWER_BOUND || n > MAX_ITERATIONS_UPPER_BOUND) {
+    console.warn(
+      `[agent] Ignoring out-of-range AGENT_MAX_ITERATIONS=${JSON.stringify(raw)} (must be ${MAX_ITERATIONS_LOWER_BOUND}-${MAX_ITERATIONS_UPPER_BOUND}); using default ${DEFAULT_MAX_ITERATIONS}.`
+    );
+    return DEFAULT_MAX_ITERATIONS;
+  }
+  return n;
+}
+
+// Resolve once at module load so the warning, if any, appears at startup —
+// not once per Agent instance.
+export const RESOLVED_MAX_ITERATIONS = resolveMaxIterations();
+
 type LogFn = (entry: Omit<HistoryEntry, "ts">) => void | Promise<void>;
 
 export class Agent {
@@ -9,12 +38,14 @@ export class Agent {
   private history: OpenAI.Chat.ChatCompletionMessageParam[] = [];
   private onMessageCallback?: (msg: string, chatId?: number) => void | Promise<void>;
   private logFn?: LogFn;
+  private readonly maxIterations: number;
 
   constructor(apiKey: string, baseURL?: string) {
     this.openai = new OpenAI({
       apiKey: apiKey,
       baseURL: baseURL || "https://api.deepseek.com",
     });
+    this.maxIterations = RESOLVED_MAX_ITERATIONS;
 
     this.history.push({
       role: "system",
@@ -72,6 +103,20 @@ Execute tasks responsibly. You operate in YOLO mode, meaning tools run immediate
       this.history.push(message as any);
 
       if (message.tool_calls && message.tool_calls.length > 0) {
+        if (attempt >= this.maxIterations) {
+          const capReply = `⚠️ Agent gave up after ${this.maxIterations} iterations.`;
+          try {
+            await this.emit({
+              kind: "loop_cap",
+              source,
+              text: capReply,
+              meta: { max_iterations: this.maxIterations, model },
+            });
+          } catch {
+            // Logging failure must not propagate; Cap_Reply still returned.
+          }
+          return capReply;
+        }
         for (const toolCall of message.tool_calls) {
           const functionName = (toolCall as any).function.name as keyof typeof toolRunner;
           const args = JSON.parse((toolCall as any).function.arguments);

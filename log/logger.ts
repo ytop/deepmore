@@ -10,7 +10,8 @@ export type EventKind =
   | "model_reply"    // raw model text response
   | "tool_call"      // agent invoked a tool
   | "tool_result"    // tool execution result
-  | "retry";         // model loop iteration (think/re-do)
+  | "retry"          // model loop iteration (think/re-do)
+  | "loop_cap";      // loop terminated by iteration cap
 
 export interface HistoryEntry {
   ts: number;        // unix ms

@@ -267,3 +267,67 @@ The intended deployment is a personal machine controlled by the same person who 
 - No retry/backoff on DeepSeek API errors.
 - `DEEPSEEK_MODEL_ULTRA` is documented but unused.
 - The blocklist for `run_shell_command` is shallow; it is not a security boundary.
+
+
+## Industry Context: Self-Optimising Agents in 2025–2026
+
+To position deepmore's self-optimisation pipeline, here is a brief survey of the prevailing approaches and what each contributes.
+
+### Reference systems
+
+| System | Approach | Source |
+|---|---|---|
+| **Sakana AI / UBC — Darwin Gödel Machine (DGM)** | A coding agent that reads and edits its own Python code, evaluates each variant on SWE-bench / Polyglot, and keeps an archive of agents (not just the current best) so future mutations can branch from any ancestor. Took itself from 20% → 50% on SWE-bench. ([Sakana AI announcement](https://sakana.ai/dgm/), [arXiv 2505.22954](https://arxiv.org/abs/2505.22954)) | Research |
+| **Claude Code "learnings loop" / binary evals** | The skill (a prompt or instruction file) is improved by a coding agent that runs against a fixed suite of binary pass/fail assertions, mutating the prompt until all tests pass. Designed for unattended overnight runs with iteration caps and locked eval files. ([MindStudio guide](https://www.mindstudio.ai/blog/self-improving-ai-skills-binary-evals-claude-code)) | Practitioner |
+| **Anthropic — harness design for long-running agents** | Emphasises the *harness* (the surrounding loop, tool surface, and verification gates) as the primary lever for autonomous coding performance, rather than just the model. ([Anthropic engineering](https://www.anthropic.com/engineering/harness-design-long-running-apps)) | Vendor |
+| **GitHub Copilot custom instructions** | Per-repo `.instructions.md` / `CLAUDE.md`-style files that passively shape agent behaviour. Improvement happens manually by editing the instruction file; not autonomous. ([GitHub docs](https://docs.github.com/en/copilot/customizing-copilot/about-customizing-github-copilot-chat-responses)) | Vendor |
+| **Letta** | Agents with persistent, self-editable memory blocks — the agent rewrites its own context rather than its own code. ([letta-ai/letta](https://github.com/letta-ai/letta)) | OSS framework |
+| **Tencent / SelfEvolvingAgent, GenericAgent, Ouroboros, peterskoett/self-improving-agent** | Various OSS takes on agents that grow a skill tree, evolve from a seed prompt, or rewrite their own code. ([Tencent/SelfEvolvingAgent](https://github.com/Tencent/SelfEvolvingAgent), [lsdefine/GenericAgent](https://github.com/lsdefine/GenericAgent)) | OSS research |
+| **AgentGit, GitButler "agent-safe Git", Tilde** | Tooling layer that gives agents transactional, rollbackable workspaces — separate from the agent's reasoning, focused on safe undo. ([AgentGit paper](https://arxiv.org/html/2511.00628v1), [GitButler post](https://blog.gitbutler.com/agentic-safety)) | Tooling |
+
+*Content rephrased for compliance with licensing restrictions.*
+
+### Common patterns across the field
+
+Reading across these systems, the recurring building blocks are:
+
+1. **A trigger** — schedule, evaluation failure, user feedback, or every iteration of a search loop.
+2. **A signal** — what the agent learns from. Either *behavioural traces* (Letta, Claude learnings loop, deepmore) or *benchmark scores* (DGM).
+3. **A target** — what gets rewritten. Source code (DGM, deepmore), prompts/skills (Claude binary evals), memory blocks (Letta), or instruction files (Copilot custom instructions).
+4. **A verification gate** — the mutation has to pass *something* before it's kept: unit tests, binary evals, benchmarks, or in deepmore's case, `bun build`.
+5. **A rollback mechanism** — git reset, archive of prior agents, or version-pinned instruction files.
+6. **An archive vs. a single mainline** — DGM's key insight is keeping many ancestors so non-greedy search is possible. Most production-style systems (deepmore, Claude binary loop) optimise the single current file.
+
+## Top 5 Features of deepmore's Current Self-Optimisation Agent
+
+Mapped against the patterns above, deepmore's `vox` self-optimiser distinguishes itself with these five features.
+
+### 1. Behavioural-trace-driven mutation (not benchmark-driven)
+
+deepmore reads the previous 24 hours of *real* user/agent interactions from `log/history.jsonl` and feeds them to DeepSeek alongside the source. The improvement signal is "what actually happened with the user", not synthetic benchmark scores like SWE-bench. This is closer to the Claude "learnings loop" pattern than to DGM, and it makes the agent improve along the axis the user actually exercises. The structured `EventKind` schema (`telegram_in`, `tool_call`, `tool_result`, `model_reply`, `retry`, etc.) gives the model rich, classifiable signal rather than a flat chat transcript.
+
+### 2. Single-shot "top-1 critical change" policy
+
+Rather than proposing many candidate patches and ranking them (DGM-style), the optimiser asks the model for exactly one improvement per cycle, gated on a self-declared `critical: true` flag. If nothing critical is found, the cycle is a no-op. This is a deliberate conservatism: low blast radius per day, easy to audit, and trivial to reason about. The trade-off is no exploration of multiple branches — a single bad day's prompt cannot push the system toward a divergent design path.
+
+### 3. Build-as-acceptance-test with hard rollback
+
+Every proposed change must pass `bun build --target=bun index.ts` before it is committed. Failure triggers `git reset --hard <prevCommit>`, returning the working tree to the pre-mutation state with no manual cleanup. This is the same shape as DGM's evaluation gate and AgentGit-style transactional workspaces, just simpler: deepmore relies on type-checking and bundling as its only correctness signal, not unit tests or benchmarks.
+
+### 4. Version-controlled, pushed history of self-modifications
+
+On success the optimiser does `git add` + `git commit -m "vox: <title>"` + `git push`. Every self-modification becomes an inspectable, reversible commit on the remote. This gives deepmore something the DGM archive provides at a research level — a transparent, traceable lineage of every change — but using stock git semantics instead of an in-memory archive. The Sakana team explicitly cites traceable lineage as essential for safety; deepmore inherits that property for free from git.
+
+### 5. Hot-restart of the live agent after a successful patch
+
+Once the new file is committed, vox calls `restartAgent()` — killing the running `deepseek-telegram-agent` subprocess and re-spawning it from the updated source. The user's next Telegram message hits the improved code without any manual deploy step. The trade-off, called out in the design above, is loss of in-memory conversation state at restart; vox treats overnight self-improvement as the natural "session boundary".
+
+### What deepmore deliberately does not do (and why it matters)
+
+For honest comparison, three things absent from deepmore that the leading systems include:
+
+- **No benchmark/eval suite** — there are no binary assertions, no SWE-bench harness, only `bun build`. A change that compiles but degrades behaviour will ship.
+- **No archive / open-ended search** — the system is greedy on a single mainline. It cannot recover from a string of locally-good but globally-suboptimal changes the way DGM's branching archive can.
+- **No safety sandbox for the optimiser itself** — the daily improvement runs against the same DeepSeek API and the same git remote that the live bot uses. There is no isolated branch, no human approval step, no capability boundary on what the model can rewrite.
+
+These are reasonable omissions for a single-user personal-machine agent, but they are the natural next steps if the project moves toward unattended deployment or multi-user use.
