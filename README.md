@@ -6,7 +6,7 @@ A self-optimising DeepSeek AI agent accessible via Telegram, with a local TUI sh
 
 ```
 deepmore/
-├── deepseek-telegram-agent/   # Telegram bot + AI agent core
+├── deepseek-agent/            # Telegram bot + AI agent core
 │   ├── index.ts               # Bot entrypoint
 │   ├── agent.ts               # Agent class (chat loop + tool calling)
 │   └── tools.ts               # Tool definitions (shell, read/write file)
@@ -24,7 +24,7 @@ deepmore/
 
 ```bash
 # Install dependencies for both packages
-cd deepseek-telegram-agent && bun install && cd ..
+cd deepseek-agent && bun install && cd ..
 cd vox && bun install && cd ..
 ```
 
@@ -33,7 +33,7 @@ cd vox && bun install && cd ..
 Copy and fill in the env file:
 
 ```bash
-cp deepseek-telegram-agent/.env.example deepseek-telegram-agent/.env
+cp deepseek-agent/.env.example deepseek-agent/.env
 ```
 
 | Variable | Required | Description |
@@ -51,7 +51,7 @@ cp deepseek-telegram-agent/.env.example deepseek-telegram-agent/.env
 ### Run the Telegram bot directly
 
 ```bash
-cd deepseek-telegram-agent
+cd deepseek-agent
 bun run index.ts
 ```
 
@@ -73,7 +73,7 @@ vox
 
 ## Main Functions
 
-### Telegram bot (`deepseek-telegram-agent`)
+### Telegram bot (`deepseek-agent`)
 
 | Command | Description |
 |---|---|

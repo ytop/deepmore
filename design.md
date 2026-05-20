@@ -10,7 +10,7 @@ The system is built on Bun + TypeScript and is deliberately compact: two package
 
 ```
 deepmore/
-├── deepseek-telegram-agent/   # Telegram bot + AI agent core
+├── deepseek-agent/            # Telegram bot + AI agent core
 │   ├── index.ts               # Bot bootstrap, auth, command routing
 │   ├── agent.ts               # Agent class (chat loop + tool calling)
 │   ├── tools.ts               # Tool definitions + safe executors
@@ -28,7 +28,7 @@ deepmore/
 
 ```
 ┌────────────────┐        ┌──────────────────────────────────────────────┐
-│   Telegram     │◀──────▶│            deepseek-telegram-agent           │
+│   Telegram     │◀──────▶│                deepseek-agent                │
 │   user chat    │        │  ┌─────────────┐  ┌──────────┐  ┌─────────┐  │
 └────────────────┘        │  │  index.ts   │  │ agent.ts │  │tools.ts │  │
                           │  │ (grammy bot │─▶│ (loop +  │─▶│ shell / │  │
@@ -64,14 +64,14 @@ deepmore/
 
 There are two long-running Bun processes:
 
-1. **`deepseek-telegram-agent`** — a single process that hosts the Telegram bot and the in-memory agent. It can run standalone.
+1. **`deepseek-agent`** — a single process that hosts the Telegram bot and the in-memory agent. It can run standalone.
 2. **`vox`** — a parent process that spawns the agent as a subprocess (`stdio: inherit`), accepts TUI input via `readline`, and runs the self-optimisation cron. When optimisation rewrites agent source, vox restarts the subprocess.
 
 Both processes share a single append-only JSONL log file (`log/history.jsonl`) which is the source of truth for "what happened in the last 24 hours" used by the optimiser.
 
 ## Component Design
 
-### 1. Telegram bot (`deepseek-telegram-agent/index.ts`)
+### 1. Telegram bot (`deepseek-agent/index.ts`)
 
 Bootstraps the system and wires three things together: a `grammy` `Bot`, a `MessageBatcher`, and an `Agent`.
 
@@ -86,7 +86,7 @@ Responsibilities:
 - Wires the agent's `logFn` to `appendHistory(...)` so every event lands in the shared log.
 - Handles `SIGINT`/`SIGTERM` by flushing pending batched messages before stopping the bot.
 
-### 2. Agent core (`deepseek-telegram-agent/agent.ts`)
+### 2. Agent core (`deepseek-agent/agent.ts`)
 
 Encapsulates the chat-with-tools loop against DeepSeek's OpenAI-compatible API.
 
@@ -100,7 +100,7 @@ Key design choices:
   - The `attempt` counter logs a `retry` event each iteration after the first; there is no hard cap, so the loop runs as long as the model keeps requesting tools.
 - **Source/chatId propagation** — `sendMessage(message, source, chatId)` lets vox prompts and Telegram prompts share the same agent instance while logs and notifications stay correctly tagged.
 
-### 3. Tools (`deepseek-telegram-agent/tools.ts`)
+### 3. Tools (`deepseek-agent/tools.ts`)
 
 Five tools are exposed to the model, all defined as OpenAI function tools and dispatched by the `toolRunner` map.
 
@@ -114,7 +114,7 @@ Five tools are exposed to the model, all defined as OpenAI function tools and di
 
 The block-list in `validateCommand` is a lightweight safety net, not a sandbox. The agent runs with the user's full shell privileges by design ("YOLO mode").
 
-### 4. Outbound message batcher (`deepseek-telegram-agent/batcher.ts`)
+### 4. Outbound message batcher (`deepseek-agent/batcher.ts`)
 
 An agent turn often produces many short notifications (tool started, tool finished, final reply). Sending each one as a separate Telegram message would be noisy and rate-limited. `MessageBatcher` buffers them per-chat and flushes after a 10 s quiet window.
 
@@ -156,7 +156,7 @@ This is the contract between the agent (writer) and vox's optimiser (reader).
 vox has three concerns: supervising the agent subprocess, providing a TUI, and running the daily optimiser.
 
 **Sub-process supervision**
-- `startAgent()` spawns `bun run index.ts` in `deepseek-telegram-agent/` with `stdio: "inherit"` so the agent's logs go straight to vox's terminal.
+- `startAgent()` spawns `bun run index.ts` in `deepseek-agent/` with `stdio: "inherit"` so the agent's logs go straight to vox's terminal.
 - `stopAgent()` kills the subprocess and awaits exit.
 - `restartAgent()` is `stop` then `start`, used both manually (`/restart`) and after a successful self-optimisation.
 
@@ -226,7 +226,7 @@ User → Telegram → grammy "message:text" handler
 
 ## Configuration
 
-All configuration is via `.env` in `deepseek-telegram-agent/`. vox reads the same file via a path-relative `dotenv` call.
+All configuration is via `.env` in `deepseek-agent/`. vox reads the same file via a path-relative `dotenv` call.
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
@@ -320,7 +320,7 @@ On success the optimiser does `git add` + `git commit -m "vox: <title>"` + `git 
 
 ### 5. Hot-restart of the live agent after a successful patch
 
-Once the new file is committed, vox calls `restartAgent()` — killing the running `deepseek-telegram-agent` subprocess and re-spawning it from the updated source. The user's next Telegram message hits the improved code without any manual deploy step. The trade-off, called out in the design above, is loss of in-memory conversation state at restart; vox treats overnight self-improvement as the natural "session boundary".
+Once the new file is committed, vox calls `restartAgent()` — killing the running `deepseek-agent` subprocess and re-spawning it from the updated source. The user's next Telegram message hits the improved code without any manual deploy step. The trade-off, called out in the design above, is loss of in-memory conversation state at restart; vox treats overnight self-improvement as the natural "session boundary".
 
 ### What deepmore deliberately does not do (and why it matters)
 

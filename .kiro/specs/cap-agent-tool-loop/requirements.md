@@ -2,11 +2,11 @@
 
 ## Introduction
 
-The `deepseek-telegram-agent` runs an unbounded `while (true)` tool-calling loop in `Agent.runLoop` (`deepseek-telegram-agent/agent.ts`). A model that keeps emitting tool calls will spin until the DeepSeek API errors out, burning credits and host resources with no clear signal to the user. This feature adds a hard cap on the number of iterations the agent loop performs in a single turn and surfaces a clear, user-visible reply when the cap is reached. The cap MUST apply uniformly to all callers of `Agent.sendMessage`, including Telegram chat input and `vox` TUI input, and MUST be observable in the structured history log so the daily self-optimiser can reason about it.
+The `deepseek-agent` runs an unbounded `while (true)` tool-calling loop in `Agent.runLoop` (`deepseek-agent/agent.ts`). A model that keeps emitting tool calls will spin until the DeepSeek API errors out, burning credits and host resources with no clear signal to the user. This feature adds a hard cap on the number of iterations the agent loop performs in a single turn and surfaces a clear, user-visible reply when the cap is reached. The cap MUST apply uniformly to all callers of `Agent.sendMessage`, including Telegram chat input and `vox` TUI input, and MUST be observable in the structured history log so the daily self-optimiser can reason about it.
 
 ## Glossary
 
-- **Agent**: The `Agent` class exported by `deepseek-telegram-agent/agent.ts`.
+- **Agent**: The `Agent` class exported by `deepseek-agent/agent.ts`.
 - **Run_Loop**: The private method `Agent.runLoop` that drives one user turn through repeated `chat.completions.create` calls and tool dispatch.
 - **Iteration**: One pass through the body of `Run_Loop`, consisting of exactly one `chat.completions.create` call and the processing of any returned `tool_calls`. The first pass is iteration 1.
 - **Max_Iterations**: The configured upper bound on iterations per call to `Agent.sendMessage`. Defaults to 25.
@@ -16,7 +16,7 @@ The `deepseek-telegram-agent` runs an unbounded `while (true)` tool-calling loop
 - **EventKind**: The `EventKind` union in `log/logger.ts`.
 - **Loop_Cap_Event_Kind**: A new `EventKind` value, `"loop_cap"`, added to `log/logger.ts` to mark cap termination distinctly from generic `retry` events and from model errors.
 - **Cap_Env_Var**: The environment variable `AGENT_MAX_ITERATIONS`, optionally set in `.env`, used to override `Max_Iterations`.
-- **Message_Batcher**: The `MessageBatcher` instance in `deepseek-telegram-agent/index.ts` used to deliver agent replies and notifications to Telegram.
+- **Message_Batcher**: The `MessageBatcher` instance in `deepseek-agent/index.ts` used to deliver agent replies and notifications to Telegram.
 
 ## Requirements
 

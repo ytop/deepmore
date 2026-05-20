@@ -2,7 +2,7 @@
 
 ## Overview
 
-`Agent.runLoop` in `deepseek-telegram-agent/agent.ts` is currently an unbounded `while (true)`. A model that keeps emitting `tool_calls` will spin until the DeepSeek API errors, burning credits and host resources with no clear signal to the user. This feature adds a **per-turn iteration cap** that:
+`Agent.runLoop` in `deepseek-agent/agent.ts` is currently an unbounded `while (true)`. A model that keeps emitting `tool_calls` will spin until the DeepSeek API errors, burning credits and host resources with no clear signal to the user. This feature adds a **per-turn iteration cap** that:
 
 - Defaults to 25, configurable via the `AGENT_MAX_ITERATIONS` env var with a valid range of 1–1000.
 - Is resolved **once** at first `Agent` construction and held for the lifetime of that `Agent` instance.
@@ -87,7 +87,7 @@ It also matches the spirit of "cap = N iterations performed". If `Max_Iterations
 
 ## Components and Interfaces
 
-### `deepseek-telegram-agent/agent.ts` — primary changes
+### `deepseek-agent/agent.ts` — primary changes
 
 Two additions, both inside `Agent`:
 
@@ -178,7 +178,7 @@ export type EventKind =
 
 `HistoryEntry.meta` is already typed as `Record<string, unknown>` so `{ max_iterations: number; model: string }` fits without changing the type. We do not narrow `meta` per-kind: keeping the existing structural shape avoids touching every existing call site.
 
-### `deepseek-telegram-agent/index.ts` — no changes needed
+### `deepseek-agent/index.ts` — no changes needed
 
 The Telegram handler already does:
 
@@ -194,7 +194,7 @@ Because `Cap_Reply` is returned through the normal `Promise<string>` resolution 
 
 vox does not currently call `Agent.sendMessage` directly; user input typed into the TUI is logged as `vox_in` for the optimiser's benefit but is not forwarded to a live agent in-process. If a future change wires vox to call `agent.sendMessage(..., "vox", ...)`, it will receive `Cap_Reply` as the resolved string by the same mechanism — satisfying Requirement 5.2 by construction. No vox-specific code is required by this feature.
 
-### `deepseek-telegram-agent/.env.example` — documentation line
+### `deepseek-agent/.env.example` — documentation line
 
 Add a single commented line documenting the new variable:
 
@@ -401,7 +401,7 @@ This matches the workflow's required tag format.
 ### Test layout
 
 ```
-deepseek-telegram-agent/
+deepseek-agent/
   agent.test.ts        # Properties 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 + smoke check for 4.1
   index.test.ts        # Example tests for 3.3, 3.4, 5.1 (Telegram wiring)
 ```
@@ -447,9 +447,9 @@ Beyond the automated tests, two manual checks are warranted before merge:
 
 ### Files changed (recap)
 
-- `deepseek-telegram-agent/agent.ts` — add `resolveMaxIterations`, `RESOLVED_MAX_ITERATIONS`, `Agent#maxIterations`, and the cap branch in `runLoop`.
+- `deepseek-agent/agent.ts` — add `resolveMaxIterations`, `RESOLVED_MAX_ITERATIONS`, `Agent#maxIterations`, and the cap branch in `runLoop`.
 - `log/logger.ts` — extend `EventKind` union with `"loop_cap"`.
-- `deepseek-telegram-agent/.env.example` — add the optional `AGENT_MAX_ITERATIONS` documentation line.
-- New test files: `deepseek-telegram-agent/agent.test.ts`, `deepseek-telegram-agent/index.test.ts`, and (optionally) `deepseek-telegram-agent/agent.legacy.ts` as a pre-feature reference fixture.
+- `deepseek-agent/.env.example` — add the optional `AGENT_MAX_ITERATIONS` documentation line.
+- New test files: `deepseek-agent/agent.test.ts`, `deepseek-agent/index.test.ts`, and (optionally) `deepseek-agent/agent.legacy.ts` as a pre-feature reference fixture.
 
-No changes are required in `deepseek-telegram-agent/index.ts`, `deepseek-telegram-agent/batcher.ts`, `deepseek-telegram-agent/tools.ts`, or `vox/index.ts`.
+No changes are required in `deepseek-agent/index.ts`, `deepseek-agent/batcher.ts`, `deepseek-agent/tools.ts`, or `vox/index.ts`.

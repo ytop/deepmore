@@ -1,6 +1,6 @@
 # vox
 
-TUI wrapper for `deepseek-telegram-agent`.
+TUI wrapper for `deepseek-agent`.
 
 ## Usage
 
@@ -38,4 +38,4 @@ Every day at **04:00 local time** vox:
 
 ## Environment
 
-Reads `.env` from `../deepseek-telegram-agent/.env`. No separate config needed.
+Reads `.env` from `../deepseek-agent/.env`. No separate config needed.

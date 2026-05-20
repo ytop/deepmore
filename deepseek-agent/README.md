@@ -1,4 +1,4 @@
-# deepseek-telegram-agent
+# deepseek-agent
 
 To install dependencies:
 

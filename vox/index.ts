@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * vox — TUI wrapper for deepseek-telegram-agent
+ * vox — TUI wrapper for deepseek-agent
  *
  * - Runs the sub-agent as a child process
  * - Accepts prompts from stdin (interactive TUI)
@@ -17,9 +17,9 @@ import { config } from "dotenv";
 import OpenAI from "openai";
 import { appendHistory, readRecentHistory } from "../log/logger";
 
-config({ path: path.join(import.meta.dir, "../deepseek-telegram-agent/.env") });
+config({ path: path.join(import.meta.dir, "../deepseek-agent/.env") });
 
-const AGENT_DIR = path.resolve(import.meta.dir, "../deepseek-telegram-agent");
+const AGENT_DIR = path.resolve(import.meta.dir, "../deepseek-agent");
 const LOG_FILE = path.join(import.meta.dir, "vox.log");
 const LOG_PREFIX = "[vox]";
 
@@ -38,7 +38,7 @@ async function log(msg: string) {
 let agentProc: Subprocess | null = null;
 
 function startAgent() {
-  log(`${LOG_PREFIX} Starting deepseek-telegram-agent…`);
+  log(`${LOG_PREFIX} Starting deepseek-agent…`);
   agentProc = spawn(["bun", "run", "index.ts"], {
     cwd: AGENT_DIR,
     stdout: "inherit",
@@ -195,7 +195,7 @@ If there is no critical improvement, set critical=false and omit new_content.`,
   }
 
   // Commit and push
-  await git("add", `deepseek-telegram-agent/${suggestion.file}`);
+  await git("add", `deepseek-agent/${suggestion.file}`);
   await git("commit", "-m", `vox: ${suggestion.title}`);
   const push = await git("push");
   if (!push.ok) {

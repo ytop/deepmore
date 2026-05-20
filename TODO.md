@@ -76,7 +76,7 @@ The README labels this "YOLO mode" — fine for a personal machine, but the gaps
 
 ## 6. Documentation
 
-- [ ] **P1 / S — Replace `deepseek-telegram-agent/README.md`** (currently the boilerplate `bun init` template) with real content. Even a 30-line description of what the package does would help.
+- [ ] **P1 / S — Replace `deepseek-agent/README.md`** (currently the boilerplate `bun init` template) with real content. Even a 30-line description of what the package does would help.
 - [ ] **P2 / S — Architecture diagram in the root README.** `design.md` has it; the README doesn't.
 - [ ] **P2 / S — A "self-optimisation" log in the repo.** Markdown file that vox appends to on every successful change, summarising what shipped. Acts as a human-readable changelog and a cross-check against git history.
 

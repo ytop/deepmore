@@ -1,5 +1,5 @@
 {
-  "name": "deepseek-telegram-agent",
+  "name": "deepseek-agent",
   "module": "index.ts",
   "type": "module",
   "private": true,
